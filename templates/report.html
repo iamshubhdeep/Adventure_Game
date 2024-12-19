@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Echoes of the Forgotten Realm</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-800 text-green-300 flex items-center justify-center min-h-screen">
+    <div class="text-center p-8 bg-gray-900 rounded shadow-xl">
+        <h1 class="text-4xl mb-4">Echoes of the Forgotten Realm</h1>
+        <p id="game-description" class="mb-4"></p>
+        <div id="actions" class="mb-4">
+            <button onclick="sendAction('move north')">Move North</button>
+            <button onclick="sendAction('move south')">Move South</button>
+            <button onclick="sendAction('inventory')">View Inventory</button>
+        </div>
+        <div id="output" class="text-sm mt-4"></div>
+    </div>
+    <script>
+        async function fetchGameState() {
+            const response = await fetch('/game-state');
+            const state = await response.json();
+            document.getElementById('game-description').innerText = `Room: ${state.current_room} - ${state.description}`;
+        }
+
+        async function sendAction(command) {
+            const response = await fetch('/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command })
+            });
+            const result = await response.json();
+            document.getElementById('output').innerText = result.message;
+            fetchGameState();
+        }
+
+        fetchGameState();
+    </script>
+</body>
+</html>
