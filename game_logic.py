@@ -1,74 +1,145 @@
-# app.py
-from flask import Flask, jsonify, request, render_template
-from game import Room, Player, create_game_world
+class Player:
+    def __init__(self, name):
+        self.name = name
+        self.health = 100
+        self.max_health = 100
+        self.inventory = []
+        self.current_room = None
 
-app = Flask(__name__)
+    def move(self, direction):
+        if direction in self.current_room.connections:
+            self.current_room = self.current_room.connections[direction]
+            return f"You move {direction}."
+        return "You can't go that way."
 
-# Initialize game state
-player = Player("Mysterious Adventurer")
-player.current_room = create_game_world()
+    def take_item(self, item_name):
+        for item in self.current_room.items:
+            if item.name.lower() == item_name.lower() and item.is_collectible:
+                self.inventory.append(item)
+                self.current_room.items.remove(item)
+                return f"You take the {item.name}."
+        return "You can't take that."
 
-@app.route('/')
-def index():
-    return render_template('report.html')
+    def use_item(self, item_name):
+        for item in self.inventory:
+            if item.name.lower() == item_name.lower() and item.is_usable:
+                result = item.use(self)
+                if result:
+                    self.inventory.remove(item)
+                return result
+        return "You don't have that item."
 
-@app.route('/game-state', methods=['GET'])
-def game_state():
-    return jsonify({
-        'current_room': player.current_room.name,
-        'description': player.current_room.description,
-        'items': player.current_room.items,
-        'inventory': player.inventory,
-        'links': list(player.current_room.links.keys()),
-        'puzzles': list(player.current_room.puzzles.keys())
-    })
+    def get_inventory_description(self):
+        if not self.inventory:
+            return "Your inventory is empty."
+        return "Inventory: " + ", ".join(item.name for item in self.inventory)
 
-@app.route('/action', methods=['POST'])
-def action():
-    data = request.json
-    command = data.get('command')
-    response = {'success': False, 'message': ''}
+class Room:
+    def __init__(self, room_id, name, description):
+        self.room_id = room_id
+        self.name = name
+        self.description = description
+        self.items = []
+        self.puzzles = []
+        self.connections = {}
+        self.is_solved = False
 
-    if command.startswith("move"):
-        _, direction = command.split()
-        if direction in player.current_room.links:
-            player.current_room = player.current_room.links[direction]
-            response['success'] = True
-            response['message'] = f"Moved to {player.current_room.name}."
+    def add_connection(self, direction, room):
+        self.connections[direction] = room
+
+    def get_full_description(self):
+        desc = f"\n{self.name}\n{self.description}\n"
+        if self.items:
+            desc += "\nItems here: " + ", ".join(item.name for item in self.items)
+        if self.connections:
+            desc += "\nExits: " + ", ".join(self.connections.keys())
+        return desc
+
+class Item:
+    def __init__(self, item_id, name, description):
+        self.item_id = item_id
+        self.name = name
+        self.description = description
+        self.is_collectible = True
+        self.is_usable = True
+
+    def use(self, player):
+        return f"You use the {self.name}."
+
+class Puzzle:
+    def __init__(self, puzzle_id, name, description, solution):
+        self.puzzle_id = puzzle_id
+        self.name = name
+        self.description = description
+        self.solution = solution
+        self.is_solved = False
+
+    def check_solution(self, attempt):
+        if attempt.lower() == self.solution.lower():
+            self.is_solved = True
+            return True
+        return False
+
+class GameManager:
+    def __init__(self):
+        self.player = None
+        self.current_room = None
+        self.rooms = {}
+        self.game_over = False
+
+    def create_game_world(self):
+        # Create rooms
+        entrance = Room(1, "Entrance Hall", "A dimly lit hall with ancient tapestries.")
+        library = Room(2, "Library", "Dusty bookshelves line the walls.")
+        lab = Room(3, "Laboratory", "Strange equipment and vials fill the room.")
+
+        # Create connections
+        entrance.add_connection("north", library)
+        library.add_connection("south", entrance)
+        library.add_connection("east", lab)
+        lab.add_connection("west", library)
+
+        # Add items
+        key = Item(1, "Rusty Key", "An old key that might still work.")
+        book = Item(2, "Spellbook", "A book containing magical knowledge.")
+        potion = Item(3, "Health Potion", "Restores health when consumed.")
+
+        entrance.items.append(key)
+        library.items.append(book)
+        lab.items.append(potion)
+
+        # Store rooms
+        self.rooms = {
+            1: entrance,
+            2: library,
+            3: lab
+        }
+
+    def start_game(self, player_name):
+        self.player = Player(player_name)
+        self.current_room = self.rooms[1]  # Start at entrance
+        self.player.current_room = self.current_room
+
+    def process_command(self, command):
+        words = command.lower().split()
+        if not words:
+            return "Please enter a command."
+
+        action = words[0]
+        if len(words) > 1:
+            target = " ".join(words[1:])
         else:
-            response['message'] = "You can't go that way!"
+            target = ""
 
-    elif command.startswith("pick"):
-        _, item = command.split()
-        if item in player.current_room.items:
-            player.inventory.append(item)
-            player.current_room.items.remove(item)
-            response['success'] = True
-            response['message'] = f"{item} added to your inventory."
+        if action == "move":
+            return self.player.move(target)
+        elif action == "take":
+            return self.player.take_item(target)
+        elif action == "use":
+            return self.player.use_item(target)
+        elif action == "look":
+            return self.current_room.get_full_description()
+        elif action == "inventory":
+            return self.player.get_inventory_description()
         else:
-            response['message'] = "Item not found in this room."
-
-    elif command.startswith("solve"):
-        _, puzzle = command.split()
-        solution = data.get('solution')
-        if puzzle in player.current_room.puzzles:
-            if solution == player.current_room.puzzles[puzzle]:
-                player.solved_puzzles.append(puzzle)
-                response['success'] = True
-                response['message'] = "Puzzle solved!"
-            else:
-                response['message'] = "Incorrect solution."
-        else:
-            response['message'] = "No such puzzle here."
-
-    elif command == "inventory":
-        response['success'] = True
-        response['message'] = f"Inventory: {', '.join(player.inventory) if player.inventory else 'Empty'}"
-
-    else:
-        response['message'] = "Invalid command!"
-
-    return jsonify(response)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+            return "Invalid command."
