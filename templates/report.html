@@ -1,40 +1,157 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Echoes of the Forgotten Realm</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+            font-family: 'Courier New', monospace;
+        }
+        #game-output {
+            height: 400px;
+            overflow-y: auto;
+        }
+        .game-text {
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
 </head>
-<body class="bg-gray-800 text-green-300 flex items-center justify-center min-h-screen">
-    <div class="text-center p-8 bg-gray-900 rounded shadow-xl">
-        <h1 class="text-4xl mb-4">Echoes of the Forgotten Realm</h1>
-        <p id="game-description" class="mb-4"></p>
-        <div id="actions" class="mb-4">
-            <button onclick="sendAction('move north')">Move North</button>
-            <button onclick="sendAction('move south')">Move South</button>
-            <button onclick="sendAction('inventory')">View Inventory</button>
+<body class="text-green-300 min-h-screen p-4">
+    <div class="container mx-auto max-w-4xl">
+        <!-- Game Title -->
+        <h1 class="text-4xl font-bold text-center mb-8 text-green-400">
+            Echoes of the Forgotten Realm
+        </h1>
+        
+        <!-- Start Game Section -->
+        <div id="start-section" class="text-center mb-8">
+            <input type="text" id="player-name" 
+                   class="bg-gray-800 text-green-300 border border-green-500 rounded px-4 py-2 mb-4" 
+                   placeholder="Enter your name">
+            <button id="start-game" 
+                    class="bg-green-700 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                Start Adventure
+            </button>
         </div>
-        <div id="output" class="text-sm mt-4"></div>
+
+        <!-- Game Interface (hidden initially) -->
+        <div id="game-interface" class="hidden">
+            <!-- Game Output -->
+            <div id="game-output" class="bg-gray-800 p-4 rounded-t border border-green-500 mb-4">
+                <div id="output-text" class="space-y-2"></div>
+            </div>
+
+            <!-- Player Status -->
+            <div class="flex justify-between mb-4">
+                <div id="health-status" class="text-green-400">Health: 100</div>
+                <div id="inventory-status" class="text-green-400">Inventory: Empty</div>
+            </div>
+
+            <!-- Command Input -->
+            <div class="flex space-x-2">
+                <input type="text" id="command-input" 
+                       class="flex-1 bg-gray-800 text-green-300 border border-green-500 rounded px-4 py-2" 
+                       placeholder="Enter your command">
+                <button id="send-command" 
+                        class="bg-green-700 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                    Send
+                </button>
+            </div>
+
+            <!-- Command Help -->
+            <div class="mt-4 text-sm text-green-400">
+                Available commands: move [direction], take [item], use [item], look, inventory
+            </div>
+        </div>
     </div>
+
     <script>
-        async function fetchGameState() {
-            const response = await fetch('/game-state');
-            const state = await response.json();
-            document.getElementById('game-description').innerText = `Room: ${state.current_room} - ${state.description}`;
-        }
+        document.addEventListener('DOMContentLoaded', function() {
+            const startSection = document.getElementById('start-section');
+            const gameInterface = document.getElementById('game-interface');
+            const outputText = document.getElementById('output-text');
+            const playerNameInput = document.getElementById('player-name');
+            const commandInput = document.getElementById('command-input');
+            const healthStatus = document.getElementById('health-status');
+            const inventoryStatus = document.getElementById('inventory-status');
 
-        async function sendAction(command) {
-            const response = await fetch('/action', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command })
+            // Start Game
+            document.getElementById('start-game').addEventListener('click', async function() {
+                const playerName = playerNameInput.value.trim();
+                if (!playerName) {
+                    alert('Please enter your name');
+                    return;
+                }
+
+                const response = await fetch('/start_game', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ player_name: playerName })
+                });
+
+                const data = await response.json();
+                startSection.classList.add('hidden');
+                gameInterface.classList.remove('hidden');
+                addToOutput(data.room_description);
             });
-            const result = await response.json();
-            document.getElementById('output').innerText = result.message;
-            fetchGameState();
-        }
 
-        fetchGameState();
+            // Send Command
+            async function sendCommand() {
+                const command = commandInput.value.trim();
+                if (!command) return;
+
+                const response = await fetch('/process_command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ command: command })
+                });
+
+                const data = await response.json();
+                addToOutput(`> ${command}`);
+                addToOutput(data.message);
+                if (data.room_description) {
+                    addToOutput(data.room_description);
+                }
+
+                // Update status
+                healthStatus.textContent = `Health: ${data.health}`;
+                inventoryStatus.textContent = data.inventory;
+
+                // Check game over
+                if (data.game_over) {
+                    addToOutput('Game Over!');
+                    commandInput.disabled = true;
+                }
+
+                commandInput.value = '';
+            }
+
+            document.getElementById('send-command').addEventListener('click', sendCommand);
+            commandInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendCommand();
+                }
+            });
+
+            function addToOutput(text) {
+                const p = document.createElement('p');
+                p.textContent = text;
+                p.className = 'game-text';
+                outputText.appendChild(p);
+                outputText.scrollTop = outputText.scrollHeight;
+            }
+        });
     </script>
 </body>
 </html>
