@@ -1,9 +1,12 @@
-# app.py
 from flask import Flask, render_template, request, jsonify, session
+import os
+import logging
 from game_logic import GameManager, Player, Room, Item, Puzzle
 
+# Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'your-secret-key'  # Required for session management
+app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key')  # Use environment variable for secret key
+logging.basicConfig(level=logging.INFO)  # Enable logging
 
 # Initialize game state
 game_state = None
@@ -42,15 +45,10 @@ def process_command():
     
     return jsonify(response)
 
-# The GameState class definition can stay the same
 class GameState:
     def __init__(self):
         self.game_manager = GameManager()
         self.game_manager.create_game_world()
 
-# This is important for Vercel
-app.debug = False
-
-# Required for Vercel
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=False)  # Ensure debug is False in production
